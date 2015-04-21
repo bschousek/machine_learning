@@ -13,6 +13,7 @@ library(reshape2)
 library(kernlab)
 library(gridExtra)
 library(xtable)
+library(knitr)
 ```
 
 ```{r load, include=F}
