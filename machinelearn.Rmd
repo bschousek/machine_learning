@@ -1,0 +1,209 @@
+---
+title: "Practical Machine Learning Class Project"
+author: "Brian Schousek"
+date: "April, 2015"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache=TRUE)
+library(caret)
+library(randomForest)
+library(reshape2)
+library(kernlab)
+library(gridExtra)
+library(xtable)
+```
+
+```{r load, include=F}
+fulltest=read.csv("pml-testing.csv",na.strings=c("#DIV/0!","","NA"))
+fulltest=Filter(function(x) sum(is.na(x))/length(x)<0.99,fulltest)
+fulltest$problem_id=NULL
+exclude_names=c("X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp", "new_window", "num_window")
+fulltest=fulltest[,-which(names(fulltest) %in% exclude_names)]
+fulltrain=read.csv("pml-training.csv",na.strings=c("#DIV/0!","","NA"))
+sumrows=fulltrain$new_window=='yes'
+
+traindata=fulltrain[!sumrows,]
+traindata=traindata[,c(names(fulltest),'classe')]
+traindata=traindata[]
+set.seed(8675309)
+inTrain=createDataPartition(y=traindata$classe,p=0.6,list=FALSE)
+training=traindata[inTrain,]
+testbase=traindata[-inTrain,]
+predictors=training[,1:52]
+outcomes=training$classe
+save(predictors,outcomes,file="training.dat")
+
+
+inValidation=createDataPartition(y=testbase$classe,p=.5,list=FALSE)
+validation=testbase[inValidation,]
+finaltest=testbase[-inValidation,]
+testing=testbase[-inValidation,]
+totalrows=nrow(fulltrain)
+totalvars=ncol(fulltrain)-1
+
+v_predictors=validation[,1:52]
+v_outcomes=validation$classe
+
+usedrows=nrow(traindata)
+usedvars=ncol(traindata)-1
+
+nrowtrain=nrow(training)
+nrowtest=nrow(testing)
+
+```
+
+```{r dofit}
+```
+
+#Introduction
+
+Presented here are the results of a machine learning exercise performed to classify whether a test subject performed certain weightlifting exercises properly. Predictor variables were determined and examined. Several models were fitted to the data and expected error is reported by cross-validation and straight validation. The results obtained from the training were then fed to a pristine test data set to gauge the quality of the fit.
+
+#Background
+
+Test subjects were instructed to perform repetitions of several exercises while they and their exercise equipment were instrumented for measurement. The test subjects were not experienced weightlifters, but were coached by trainers in how to properly perform the exercises, then asked to perform the exercises correctly, and then told to perform the exercises incorrectly in a number of specific different  ways. 
+
+#Data Review
+
+A total of **`r totalrows`** observations on **`r totalvars`** variables were recorded in the training data set. The observations were recorded as a time series with a summary row for each exercise. A future task for this data set will be to test the accuracy of the fit against a series of 20 observations for which the classification is not known in advance. This set of 20 observations serve as a sort of requirements specification for the classification exercise, since the algorithm developed must be able to work on it. Examining the test data set it is apparent that only point in time measurements are available, so the training need not be performed as a time series.
+
+Further examination of the test data set shows that of the **`r totalvars`** variables, most consist of only NA values. Removing these variables along with the user name and time series variables leaves us with **`r usedvars`** variables on which to perform the classification. The training data set was first trimmed of rows which are summaries, then variables were trimmed to contain only the **`r usedvars`** variables available for consideration in the test data set, leaving **`r usedrows`** observations on **`r usedvars`** variables plus the classification variable.
+
+The data was then partitioned into training,validation and test sets of 60%, 20% and 20% of the available training observations respectively. The validation and test groups will remain untouched until classification is complete. The validation data set will be used to choose a model fit, and finally tested against the held-out 20%.
+
+The variables in the training set were then examined to check if any extraordinary preprocessing was necessary. Density plots of all the variables by classification are shown in the figure below. Generally speaking the variables appear well behaved with no extraordinary need indicated for preprocessing. Some rare outliers, for example in the "magnet_dumbbell_y"" variable do exist, but should still be acceptable due as long as cross-validation and or bootstrap sampling are used in the final model, as the contributions due to the rare outliers will tend to be diminished. 
+
+
+
+```{r exploratory, echo=FALSE, fig.height=10,fig.width=8,message=FALSE}
+munged=melt(training,idvar='classe')
+densityplot(~value|variable,data=munged,scales=list(relation="free",draw=F),pch=20,layout=c(4,13))
+
+```
+
+# Training and Selecting a Model
+### Checking on out of sample error with cross-validation and validation
+
+Next several model fits were performed. The four methods attempted were random forest ('rf'), stochastic gradient boosting ('gbm'), linear discriminant analysis ('lda') and state vector machine ('svmRadial'). Each model fit was performed using train's repeated cross validation with 2 folds and 5 repeats. Except for the random forest, all models had basic centering and scaling preprocessing performed, to bring the mean of data to zero and standard deviation to 1. For each of the models computation time and predicted accuracy were calculated and stored. 
+
+
+```
+# The file many_train.r was executed in a parallel processing environment,
+#  with the results saved to a file loaded in the next chunk
+many_train.r:
+
+library(caret)
+library(doParallel)
+library(gdm)
+
+cl=makeCluster(6)
+registerDoParallel(cl)
+
+load('training.dat')
+
+control=trainControl(method='repeatedcv',number=2,repeats=5,verboseIter=TRUE)
+results=list()
+
+#svm
+results[[1]]=fit_svm_t=train(predictors,outcomes,method='svmRadial',
+                             trControl=control,
+                             preProcess=c('center','scale'), tuneLength=8)
+
+#random forest
+rf_tunegrid=expand.grid(mtry=seq(1,52,4))
+results[[2]]=fit_rf_t<-train(predictors,outcomes,method="rf",
+                             tuneGrid = rf_tunegrid,trControl=control)
+#gbm
+gbm_tunegrid=expand.grid(n.trees=c(300,400,500),shrinkage=c(0.1,0.2),interaction.depth=c(8,12,16))
+results[[3]]=fit_gbm_t=train(predictors,outcomes,method='gbm',
+                             preProcess=c('center','scale'), trControl=control,tuneGrid=gbm_tunegrid)
+
+#lda
+results[[4]]=fit_lda_t=train(predictors,outcomes,method='lda',
+                             preProcess=c('center','scale'))
+
+save(results,file='fitted_models.dat')
+
+```
+
+Finally, each model was used to predict against the validation data set to see how well cross-validation worked, and a final model selection ws made before applying the selected model to the final held-out test set. The table below shows the summary results of the model fit and prediction.
+
+
+
+
+```{r parsemodels, echo=FALSE}
+load('fitted_models.dat')
+
+table_out=data.frame(method=character(0),elapsed=numeric(0),p_time=numeric(0),p_accuracy=numeric(0), v_accuracy=numeric(0),pplost=numeric(0))
+for (model in results) {
+    method=model$method
+    elapsed=model$times$everything[3]
+    predict=confusionMatrix(predict(model),outcomes)
+    p_accuracy=predict$overall[[1]]
+    p_times=system.time(fit<-(confusionMatrix(predict(model,validation[,1:52]),validation$classe)))
+    p_time=p_times[[3]]
+    v_accuracy=fit$overall[[1]]
+    pplost=(p_accuracy-v_accuracy)*100
+    table_out=rbind(table_out,data.frame(method,elapsed,p_time,p_accuracy,v_accuracy,pplost))
+}
+```
+``` {r tabular_results,echo=FALSE}
+kable(table_out,digits=3,row.names=FALSE,
+      col.names=c('method','fitting time','predict time','predicted accuracy',
+                  'validated accuracy','delta accuracy'))
+
+
+```
+
+The plot below shows the expected accuracy based on cross-validation (salmon bars on the left) along with the measured accuracy for a held-out validation set (blue-green bars on the right.) Three of the models provide near 100% expected accuracy, which makes it easy to discard the LDA as a technique for this data. As to be expected,the cross-validation accuracy estimate comes in higher than the strict validation accuracy, but the differences are relatively minor at less than a percentage point for each model as shown in 'delta accuracy' in the table above. For a model such as this where the risk due to misclassification is not life threatening, the relative differences between accuracy of svm, random forest, and gbm are probably not important.
+
+``` {r comparison_plots, fig.width=10,fig.height=4, echo=FALSE}
+mm=melt(table_out,id.vars='method',measure.vars=c('p_accuracy','v_accuracy'))
+t_v=ggplot(mm,aes(x=method,y=value,fill=variable))+geom_bar(stat='identity',position='dodge')+
+    labs(y='Accuracy (%)',title='Accuracy')+
+    scale_fill_discrete(name=NULL,labels=c('training (in-sample)','validation (out of sample)'))
+
+    
+plost=ggplot(table_out,aes(x=method,y=pplost))+geom_bar(stat='identity')+
+    labs(y='percentage points',title='Relative Out of Sample Error')
+    
+
+t_v
+#grid.arrange(t_v,plost,nrow=1)
+```
+
+It might be important however how quickly each algorithm performs. Shown below are the times it took to train and predict for each of the four algorithms. If training and prediction time are the most important, lda is the clear winner. The author however wishes to receive better than a 70% score in the course project submission stage so it is again rejected. Of the three remaining models SVM wins for training time, but loses for prediction time. GBM is a big loser for training time, but does fairly well in prediction time. Random forest seems a good balance with relatively quick training and prediction times close to the lda model. Thus it is the random forest model which is selected for the final model.
+
+``` {r timing_plots, fig.width=10,fig.height=4, echo=FALSE}
+timing=ggplot(table_out,aes(x=method,y=elapsed))+geom_bar(stat='identity')+
+    labs(y='elapsed time (seconds)',title='Training Time')
+    
+
+prediction_time=ggplot(table_out,aes(x=method,y=p_time))+geom_bar(stat='identity')+
+    labs(y='elapsed time (seconds)',title='Prediction Time')
+grid.arrange(timing,prediction_time,nrow=1)
+```
+
+# Final Test
+
+Finally, after model selection is complete, prediction is performed on the held-out test set and the final accuracy is reported. Final accuracy comes in at greater than 99.3%
+
+``` {r finaltest}
+finalmodel=results[[2]]
+finalfit=predict(finalmodel,finaltest[,1:52])
+confusionMatrix(finalfit,finaltest$classe)
+```
+
+
+
+## Appendix
+
+Data courtesy of:
+Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6.
+http://groupware.les.inf.puc-rio.br/har
+
+``` {r notes}
+sessionInfo()
+```
