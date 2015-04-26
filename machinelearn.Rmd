@@ -3,6 +3,7 @@ title: "Practical Machine Learning Class Project"
 author: "Brian Schousek"
 date: "April, 2015"
 output: html_document
+
 ---
 
 ```{r setup, include=FALSE}
@@ -134,7 +135,7 @@ Finally, each model was used to predict against the validation data set to see h
 
 
 
-```{r parsemodels, echo=FALSE}
+```{r parsemodels, echo=TRUE}
 load('fitted_models.dat')
 
 table_out=data.frame(method=character(0),elapsed=numeric(0),p_time=numeric(0),p_accuracy=numeric(0), v_accuracy=numeric(0),pplost=numeric(0))
@@ -142,28 +143,30 @@ for (model in results) {
     method=model$method
     elapsed=model$times$everything[3]
     predict=confusionMatrix(predict(model),outcomes)
-    p_accuracy=predict$overall[[1]]
+    p_accuracy=predict$overall[[1]]*100
     p_times=system.time(fit<-(confusionMatrix(predict(model,validation[,1:52]),validation$classe)))
     p_time=p_times[[3]]
-    v_accuracy=fit$overall[[1]]
-    pplost=(p_accuracy-v_accuracy)*100
-    table_out=rbind(table_out,data.frame(method,elapsed,p_time,p_accuracy,v_accuracy,pplost))
+    v_accuracy=fit$overall[[1]]*100
+    p_oos=100-p_accuracy
+    v_oos=100-v_accuracy
+    table_out=rbind(table_out,data.frame(method,elapsed,p_time,p_accuracy,v_accuracy,p_oos,v_oos))
+
 }
 ```
 ``` {r tabular_results,echo=FALSE}
-kable(table_out,digits=3,row.names=FALSE,
-      col.names=c('method','fitting time','predict time','predicted accuracy',
-                  'validated accuracy','delta accuracy'))
+kable(table_out,digits=2,row.names=FALSE,
+      col.names=c('method','fitting time (s)','predict time (s)','predicted accuracy (%)',
+                  'validated accuracy (%)','Predicted OOS (%)','Validated OOS (%)'))
 
 
 ```
 
-The plot below shows the expected accuracy based on cross-validation (salmon bars on the left) along with the measured accuracy for a held-out validation set (blue-green bars on the right.) Three of the models provide near 100% expected accuracy, which makes it easy to discard the LDA as a technique for this data. As to be expected,the cross-validation accuracy estimate comes in higher than the strict validation accuracy, but the differences are relatively minor at less than a percentage point for each model as shown in 'delta accuracy' in the table above. For a model such as this where the risk due to misclassification is not life threatening, the relative differences between accuracy of svm, random forest, and gbm are probably not important.
+The plot below shows the out of sample error based on both based on cross-validation (salmon bars on the left) and for a held-out validation set (blue-green bars on the right.) Three of the models provide near 100% expected accuracy, and therefore near zero out of sample error, which makes it easy to discard the LDA as a technique for this data. As to be expected,the cross-validation based out of sample error estimate comes in lower than that for the strict validation value, but the differences are relatively minor at less than a percentage point for each model. For a model such as this where the risk due to misclassification is not life threatening, the relative differences between accuracy of svm, random forest, and gbm are probably not important.
 
 ``` {r comparison_plots, fig.width=10,fig.height=4, echo=FALSE}
 mm=melt(table_out,id.vars='method',measure.vars=c('p_accuracy','v_accuracy'))
-t_v=ggplot(mm,aes(x=method,y=value,fill=variable))+geom_bar(stat='identity',position='dodge')+
-    labs(y='Accuracy (%)',title='Accuracy')+
+t_v=ggplot(mm,aes(x=method,y=(100-value),fill=variable))+geom_bar(stat='identity',position='dodge')+
+    labs(y='Out of sample error (%)',title='Out Of Sample Error')+
     scale_fill_discrete(name=NULL,labels=c('training (in-sample)','validation (out of sample)'))
 
     
