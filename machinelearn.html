@@ -214,7 +214,7 @@ for (model in results) {
 </div>
 <div id="final-test" class="section level1">
 <h1>Final Test</h1>
-<p>Finally, after model selection is complete, prediction is performed on the held-out test set and the final accuracy is reported. Final accuracy comes in at greater than 99.3%</p>
+<p>Finally, after model selection is complete, prediction is performed on the held-out test set and the final accuracy is reported. Final accuracy comes in at greater than 99.3% with out of sample error at only 0.7%.</p>
 <pre class="r"><code>finalmodel=results[[2]]
 finalfit=predict(finalmodel,finaltest[,1:52])
 confusionMatrix(finalfit,finaltest$classe)</code></pre>

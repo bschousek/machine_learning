@@ -192,7 +192,7 @@ grid.arrange(timing,prediction_time,nrow=1)
 
 # Final Test
 
-Finally, after model selection is complete, prediction is performed on the held-out test set and the final accuracy is reported. Final accuracy comes in at greater than 99.3%
+Finally, after model selection is complete, prediction is performed on the held-out test set and the final accuracy is reported. Final accuracy comes in at greater than 99.3% with out of sample error at only 0.7%.
 
 ``` {r finaltest}
 finalmodel=results[[2]]
